@@ -49,7 +49,7 @@ curl -X POST http://localhost:8000/api/v1/schedule \
 uv run pytest tests/ -v
 ```
 
-All 40 tests should pass. The suite covers canonical models, the Client A adapter,
+All 45 tests should pass. The suite covers canonical models, the Client A adapter,
 the semantic validator, the CP-SAT solver, and the HTTP endpoint end-to-end.
 
 ---
@@ -88,7 +88,7 @@ sufficient for the expected problem sizes.
 
 | Decision | Rationale |
 |---|---|
-| HTTP 200 for infeasible results | Infeasibility is a valid scheduling outcome, not a request error. A structured `{"error": "infeasible", "why": [...]}` body is returned. |
+| HTTP 422 for infeasible results | Infeasibility is a valid scheduling outcome but the request cannot be fulfilled, so a 422 with a structured `{"error": "infeasible", "why": [...]}` body is returned. |
 | Semantic validation before solving | Catches obviously unsolvable inputs (orphan capabilities, zero-window resources) cheaply without invoking the solver. |
 | Pairwise changeover constraints | Simpler than circuit constraints, O(n²) per resource. Suitable for the sizes seen in production scheduling problems at this scale. |
 | One `start`/`end` variable per operation | Shared across all resource/window options. `OptionalIntervalVar` presence literals handle resource and window selection. This keeps precedence constraints simple (`end[o] <= start[o+1]`). |
@@ -120,7 +120,7 @@ solve(problem)          ← CP-SAT solver
 feasible    infeasible
   │            │
   ▼            ▼
-compute_kpis   200 {"error": "infeasible", "why": [...]}
+compute_kpis   422 {"error": "infeasible", "why": [...]}
   │
   ▼
 200 {"assignments": [...], "kpis": {...}}

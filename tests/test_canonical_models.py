@@ -3,7 +3,7 @@ from datetime import datetime
 import pytest
 from pydantic import ValidationError
 
-from app.models.canonical import ChangeoverMatrix, ObjectiveMode, TimeWindow
+from app.models.models import ChangeoverMatrix, ObjectiveMode, TimeWindow
 
 
 def test_time_window_rejects_start_after_end() -> None:

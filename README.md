@@ -52,6 +52,15 @@ uv run pytest tests/ -v
 All 45 tests should pass. The suite covers canonical models, the Client A adapter,
 the semantic validator, the CP-SAT solver, and the HTTP endpoint end-to-end.
 
+### Acceptance checks (requires running server)
+
+```bash
+uv run python validate.py
+```
+
+Runs 3 checks against the live API: constraint invariants (no overlap + precedence),
+KPI reproducibility, and the infeasible case. Exit code 0 = all passed.
+
 ---
 
 ## Approach

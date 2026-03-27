@@ -5,6 +5,7 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 from app.models import (
+    Assignment,
     ChangeoverMatrix,
     Job,
     ObjectiveMode,
@@ -49,6 +50,18 @@ class ClientARequest(BaseModel):
     changeover_matrix_minutes: ClientAChangeoverMatrixMinutes
     products: list[ClientAProduct]
     settings: ClientASettings
+
+
+def format_assignment(assignment: Assignment) -> dict:
+    """Format a canonical Assignment into the Client A response shape."""
+    return {
+        "product": assignment.job_id,
+        "step_index": assignment.operation_index + 1,  # canonical is 0-based; Client A is 1-based
+        "capability": assignment.capability,
+        "resource": assignment.resource_id,
+        "start": assignment.start.isoformat(),
+        "end": assignment.end.isoformat(),
+    }
 
 
 def _parse_changeover_keys(flat: dict[str, int]) -> dict[str, dict[str, int]]:

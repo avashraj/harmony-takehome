@@ -472,3 +472,69 @@ def test_full_spec_kpis() -> None:
     for resource in problem.resources:
         assert resource.id in kpis.utilization_pct
         assert 0 <= kpis.utilization_pct[resource.id] <= 100
+
+
+# ---------------------------------------------------------------------------
+# KPI: same-family changeovers must not be counted
+# ---------------------------------------------------------------------------
+
+
+def test_same_family_changeover_not_counted() -> None:
+    """Two consecutive jobs of the same family on the same resource produce zero
+    changeover_count and zero changeover_minutes, even when cross-family entries
+    exist in the matrix."""
+    problem = _problem(
+        jobs=[
+            Job(id="J1", family="standard", due=_dt(480), operations=[
+                Operation(capability="fill", duration_minutes=20),
+            ]),
+            Job(id="J2", family="standard", due=_dt(480), operations=[
+                Operation(capability="fill", duration_minutes=20),
+            ]),
+        ],
+        resources=[Resource(id="Fill", capabilities={"fill"}, calendar=[_window(0, 480)])],
+        changeover_entries={
+            "standard": {"standard": 0, "premium": 20},
+            "premium": {"standard": 20, "premium": 0},
+        },
+    )
+    result = solve(problem)
+    assert isinstance(result, SchedulerSuccess)
+
+    kpis = compute_kpis(problem, result.assignments)
+    assert kpis.changeover_count == 0, (
+        f"Expected 0 changeovers for same-family sequence, got {kpis.changeover_count}"
+    )
+    assert kpis.changeover_minutes == 0, (
+        f"Expected 0 changeover minutes for same-family sequence, got {kpis.changeover_minutes}"
+    )
+
+
+def test_different_family_changeover_counted_once() -> None:
+    """Exactly one cross-family transition on one resource produces changeover_count=1
+    and changeover_minutes equal to the matrix value."""
+    problem = _problem(
+        jobs=[
+            Job(id="J1", family="standard", due=_dt(480), operations=[
+                Operation(capability="fill", duration_minutes=20),
+            ]),
+            Job(id="J2", family="premium", due=_dt(480), operations=[
+                Operation(capability="fill", duration_minutes=20),
+            ]),
+        ],
+        resources=[Resource(id="Fill", capabilities={"fill"}, calendar=[_window(0, 480)])],
+        changeover_entries={
+            "standard": {"standard": 0, "premium": 20},
+            "premium": {"standard": 20, "premium": 0},
+        },
+    )
+    result = solve(problem)
+    assert isinstance(result, SchedulerSuccess)
+
+    kpis = compute_kpis(problem, result.assignments)
+    assert kpis.changeover_count == 1, (
+        f"Expected 1 changeover for one cross-family transition, got {kpis.changeover_count}"
+    )
+    assert kpis.changeover_minutes == 20, (
+        f"Expected 20 changeover minutes, got {kpis.changeover_minutes}"
+    )

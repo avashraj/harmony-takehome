@@ -223,6 +223,17 @@ def test_valid_payload_returns_assignments_and_kpis() -> None:
     assert "kpis" in body
     assert len(body["assignments"]) > 0
 
+    # Verify Client A output field names
+    first = body["assignments"][0]
+    assert "product" in first
+    assert "step_index" in first
+    assert "resource" in first
+    assert "capability" in first
+    assert "start" in first
+    assert "end" in first
+    # step_index is 1-based
+    assert first["step_index"] >= 1
+
     kpis = body["kpis"]
     assert "tardiness_minutes" in kpis
     assert "changeover_count" in kpis
@@ -248,10 +259,10 @@ def test_full_example_satisfies_hard_constraints() -> None:
     assert "assignments" in body, body
     assignments = body["assignments"]
 
-    # Build lookup structures
+    # Build lookup structures using Client A field names
     by_product: dict[str, list[dict]] = {}
     for a in assignments:
-        by_product.setdefault(a["product_id"] if "product_id" in a else a["job_id"], []).append(a)
+        by_product.setdefault(a["product"], []).append(a)
 
     def parse_dt(s: str) -> datetime:
         return datetime.fromisoformat(s)
@@ -264,21 +275,21 @@ def test_full_example_satisfies_hard_constraints() -> None:
         assert parse_dt(a["start"]) >= horizon_start, f"start before horizon: {a}"
         assert parse_dt(a["end"]) <= horizon_end, f"end after horizon: {a}"
 
-    # 2. Precedence: within each job, operations are ordered by operation_index
-    for job_id, ops in by_product.items():
-        sorted_ops = sorted(ops, key=lambda x: x["operation_index"])
+    # 2. Precedence: within each product, steps are ordered by step_index (1-based)
+    for product_id, ops in by_product.items():
+        sorted_ops = sorted(ops, key=lambda x: x["step_index"])
         for i in range(len(sorted_ops) - 1):
             curr_end = parse_dt(sorted_ops[i]["end"])
             next_start = parse_dt(sorted_ops[i + 1]["start"])
             assert curr_end <= next_start, (
-                f"Precedence violated for {job_id}: op {i} ends at {curr_end}, "
-                f"op {i+1} starts at {next_start}"
+                f"Precedence violated for {product_id}: step {sorted_ops[i]['step_index']} "
+                f"ends at {curr_end}, step {sorted_ops[i+1]['step_index']} starts at {next_start}"
             )
 
     # 3. No overlap: on each resource, no two operations overlap
     by_resource: dict[str, list[dict]] = {}
     for a in assignments:
-        by_resource.setdefault(a["resource_id"], []).append(a)
+        by_resource.setdefault(a["resource"], []).append(a)
 
     for resource_id, ops in by_resource.items():
         sorted_ops = sorted(ops, key=lambda x: parse_dt(x["start"]))

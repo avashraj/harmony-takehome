@@ -2,8 +2,8 @@ from datetime import datetime
 
 import pytest
 
-from app.adapters.client_a import ClientARequest, adapt
-from app.models import SchedulingProblem, TimeWindow
+from app.adapters.client_a import ClientARequest, adapt, format_assignment
+from app.models import Assignment, SchedulingProblem, TimeWindow
 
 
 def _sample_payload() -> dict:
@@ -151,3 +151,42 @@ def test_invalid_changeover_key_raises() -> None:
 
     with pytest.raises(ValueError, match="invalid changeover key"):
         adapt(request)
+
+
+def test_format_assignment_maps_client_a_fields() -> None:
+    """format_assignment produces Client A field names and converts operation_index
+    from 0-based (canonical) to 1-based (Client A step_index)."""
+    assignment = Assignment(
+        job_id="P-100",
+        operation_index=0,
+        capability="fill",
+        resource_id="Fill-2",
+        start=datetime(2025, 11, 3, 8, 0, 0),
+        end=datetime(2025, 11, 3, 8, 30, 0),
+    )
+    result = format_assignment(assignment)
+
+    assert result["product"] == "P-100"
+    assert result["step_index"] == 1        # 0-based -> 1-based
+    assert result["capability"] == "fill"
+    assert result["resource"] == "Fill-2"
+    assert result["start"] == "2025-11-03T08:00:00"
+    assert result["end"] == "2025-11-03T08:30:00"
+    # Canonical field names must NOT appear in the output
+    assert "job_id" not in result
+    assert "operation_index" not in result
+    assert "resource_id" not in result
+
+
+def test_format_assignment_step_index_increments() -> None:
+    """step_index reflects the 1-based position in the route."""
+    for op_idx, expected_step in [(0, 1), (1, 2), (2, 3)]:
+        assignment = Assignment(
+            job_id="P-100",
+            operation_index=op_idx,
+            capability="pack",
+            resource_id="Pack-1",
+            start=datetime(2025, 11, 3, 9, 0, 0),
+            end=datetime(2025, 11, 3, 9, 15, 0),
+        )
+        assert format_assignment(assignment)["step_index"] == expected_step

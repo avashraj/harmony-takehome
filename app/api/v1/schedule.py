@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
-from app.adapters.client_a import ClientARequest, adapt
+from app.adapters.client_a import ClientARequest, adapt, format_assignment
 from app.models import InfeasibleResult
 from app.scheduler import compute_kpis, solve
 from app.validation import validate_problem
@@ -28,6 +28,6 @@ async def schedule(request: ClientARequest):
 
     kpis = compute_kpis(problem, result.assignments)
     return {
-        "assignments": [a.model_dump(mode="json") for a in result.assignments],
+        "assignments": [format_assignment(a) for a in result.assignments],
         "kpis": kpis.model_dump(),
     }

@@ -12,6 +12,8 @@ from .models import (
     SchedulerSuccess,
     SchedulingProblem,
     TimeWindow,
+    ValidationIssue,
+    ValidationResult,
 )
 
 __all__ = [
@@ -28,4 +30,6 @@ __all__ = [
     "SchedulerSuccess",
     "SchedulingProblem",
     "TimeWindow",
+    "ValidationIssue",
+    "ValidationResult",
 ]

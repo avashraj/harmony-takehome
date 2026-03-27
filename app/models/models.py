@@ -66,6 +66,23 @@ class SchedulingProblem(BaseModel):
     settings: SchedulerSettings
 
 
+class ValidationIssue(BaseModel):
+    """A single problem validation failure."""
+
+    rule: str
+    message: str
+
+
+class ValidationResult(BaseModel):
+    """Aggregated result of validating a SchedulingProblem."""
+
+    issues: list[ValidationIssue] = Field(default_factory=list)
+
+    @property
+    def is_valid(self) -> bool:
+        return len(self.issues) == 0
+
+
 class Assignment(BaseModel):
     job_id: str
     operation_index: int = Field(ge=0)

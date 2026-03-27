@@ -5,9 +5,16 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "fastapi>=0.135.2",
     "pydantic>=2.12.5",
     "pytest>=9.0.2",
+    "uvicorn[standard]>=0.42.0",
 ]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+]

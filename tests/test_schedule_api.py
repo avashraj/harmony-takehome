@@ -1,9 +1,11 @@
 """Integration tests for POST /api/v1/schedule.
 
-Three scenarios are covered:
-1. Structurally bad payload  → 422 from FastAPI's own Pydantic parsing layer.
-2. Semantic validation failure → 422 with our custom {"issues": [...]} body.
-3. Fully valid payload        → 200 stub acceptance response.
+Four scenarios are covered:
+1. Structurally bad payload      → 422 from FastAPI's own Pydantic parsing layer.
+2. Semantic validation failure   → 422 with our custom {"issues": [...]} body.
+3. Multiple semantic issues      → all issues returned in one pass (non-fail-fast).
+4. Fully valid payload (minimal) → 200 with assignments and kpis.
+5. Full 4-product example        → 200, hard constraints verified in response.
 """
 from __future__ import annotations
 
@@ -59,6 +61,94 @@ def _valid_payload() -> dict:
     }
 
 
+def _full_payload() -> dict:
+    """The canonical 4-product, 4-resource example from the spec."""
+    return {
+        "horizon": {
+            "start": "2025-11-03T08:00:00",
+            "end": "2025-11-03T16:00:00",
+        },
+        "resources": [
+            {
+                "id": "Fill-1",
+                "capabilities": ["fill"],
+                "calendar": [
+                    ["2025-11-03T08:00:00", "2025-11-03T12:00:00"],
+                    ["2025-11-03T12:30:00", "2025-11-03T16:00:00"],
+                ],
+            },
+            {
+                "id": "Fill-2",
+                "capabilities": ["fill"],
+                "calendar": [["2025-11-03T08:00:00", "2025-11-03T16:00:00"]],
+            },
+            {
+                "id": "Label-1",
+                "capabilities": ["label"],
+                "calendar": [["2025-11-03T08:00:00", "2025-11-03T16:00:00"]],
+            },
+            {
+                "id": "Pack-1",
+                "capabilities": ["pack"],
+                "calendar": [["2025-11-03T08:00:00", "2025-11-03T16:00:00"]],
+            },
+        ],
+        "changeover_matrix_minutes": {
+            "values": {
+                "standard->standard": 0,
+                "standard->premium": 20,
+                "premium->standard": 20,
+                "premium->premium": 0,
+            }
+        },
+        "products": [
+            {
+                "id": "P-100",
+                "family": "standard",
+                "due": "2025-11-03T12:30:00",
+                "route": [
+                    {"capability": "fill", "duration_minutes": 30},
+                    {"capability": "label", "duration_minutes": 20},
+                    {"capability": "pack", "duration_minutes": 15},
+                ],
+            },
+            {
+                "id": "P-101",
+                "family": "premium",
+                "due": "2025-11-03T15:00:00",
+                "route": [
+                    {"capability": "fill", "duration_minutes": 35},
+                    {"capability": "label", "duration_minutes": 25},
+                    {"capability": "pack", "duration_minutes": 15},
+                ],
+            },
+            {
+                "id": "P-102",
+                "family": "standard",
+                "due": "2025-11-03T13:30:00",
+                "route": [
+                    {"capability": "fill", "duration_minutes": 25},
+                    {"capability": "label", "duration_minutes": 20},
+                ],
+            },
+            {
+                "id": "P-103",
+                "family": "premium",
+                "due": "2025-11-03T14:00:00",
+                "route": [
+                    {"capability": "fill", "duration_minutes": 30},
+                    {"capability": "label", "duration_minutes": 20},
+                    {"capability": "pack", "duration_minutes": 15},
+                ],
+            },
+        ],
+        "settings": {
+            "time_limit_seconds": 30,
+            "objective_mode": "min_tardiness",
+        },
+    }
+
+
 # ---------------------------------------------------------------------------
 # Test 1 – structurally bad payload
 # ---------------------------------------------------------------------------
@@ -69,7 +159,6 @@ def test_bad_payload_returns_422() -> None:
     response = client.post("/api/v1/schedule", json={})
 
     assert response.status_code == 422
-    # FastAPI's default error shape includes a "detail" key, not our "issues" key.
     body = response.json()
     assert "detail" in body
 
@@ -84,7 +173,6 @@ def test_orphan_capability_returns_422_with_issues() -> None:
     no resource provides triggers our semantic validator and returns a 422 with
     a structured issues list."""
     payload = _valid_payload()
-    # Add an operation that requires a capability no resource can handle.
     payload["products"][0]["route"].append(
         {"capability": "weld", "duration_minutes": 10}
     )
@@ -99,14 +187,11 @@ def test_orphan_capability_returns_422_with_issues() -> None:
 
 
 def test_multiple_semantic_issues_all_returned() -> None:
-    """All validation issues are collected in one pass (non-fail-fast).
-    Here we trigger both orphan_capability and resource_no_calendar."""
+    """All validation issues are collected in one pass (non-fail-fast)."""
     payload = _valid_payload()
-    # Resource with no calendar windows.
     payload["resources"].append(
         {"id": "Pack-1", "capabilities": ["pack"], "calendar": []}
     )
-    # Operation requiring the resource with no calendar AND an unprovidable capability.
     payload["products"][0]["route"].append(
         {"capability": "pack", "duration_minutes": 15}
     )
@@ -124,15 +209,103 @@ def test_multiple_semantic_issues_all_returned() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 3 – valid payload
+# Test 4 – valid minimal payload returns real schedule
 # ---------------------------------------------------------------------------
 
 
-def test_valid_payload_returns_200_stub() -> None:
-    """A fully valid request passes parsing and semantic validation and receives
-    the stub acceptance response."""
+def test_valid_payload_returns_assignments_and_kpis() -> None:
+    """A fully valid request returns a solved schedule with assignments and KPIs."""
     response = client.post("/api/v1/schedule", json=_valid_payload())
 
     assert response.status_code == 200
     body = response.json()
-    assert body["status"] == "accepted"
+    assert "assignments" in body
+    assert "kpis" in body
+    assert len(body["assignments"]) > 0
+
+    kpis = body["kpis"]
+    assert "tardiness_minutes" in kpis
+    assert "changeover_count" in kpis
+    assert "changeover_minutes" in kpis
+    assert "makespan_minutes" in kpis
+    assert "utilization_pct" in kpis
+
+
+# ---------------------------------------------------------------------------
+# Test 5 – full 4-product example: verify hard constraints
+# ---------------------------------------------------------------------------
+
+
+def test_full_example_satisfies_hard_constraints() -> None:
+    """The 4-product, 4-resource spec example is feasible and the returned
+    schedule satisfies all hard constraints."""
+    from datetime import datetime
+
+    response = client.post("/api/v1/schedule", json=_full_payload())
+
+    assert response.status_code == 200
+    body = response.json()
+    assert "assignments" in body, body
+    assignments = body["assignments"]
+
+    # Build lookup structures
+    by_product: dict[str, list[dict]] = {}
+    for a in assignments:
+        by_product.setdefault(a["product_id"] if "product_id" in a else a["job_id"], []).append(a)
+
+    def parse_dt(s: str) -> datetime:
+        return datetime.fromisoformat(s)
+
+    horizon_start = parse_dt("2025-11-03T08:00:00")
+    horizon_end = parse_dt("2025-11-03T16:00:00")
+
+    # 1. Horizon bounds: all assignments within [horizon_start, horizon_end]
+    for a in assignments:
+        assert parse_dt(a["start"]) >= horizon_start, f"start before horizon: {a}"
+        assert parse_dt(a["end"]) <= horizon_end, f"end after horizon: {a}"
+
+    # 2. Precedence: within each job, operations are ordered by operation_index
+    for job_id, ops in by_product.items():
+        sorted_ops = sorted(ops, key=lambda x: x["operation_index"])
+        for i in range(len(sorted_ops) - 1):
+            curr_end = parse_dt(sorted_ops[i]["end"])
+            next_start = parse_dt(sorted_ops[i + 1]["start"])
+            assert curr_end <= next_start, (
+                f"Precedence violated for {job_id}: op {i} ends at {curr_end}, "
+                f"op {i+1} starts at {next_start}"
+            )
+
+    # 3. No overlap: on each resource, no two operations overlap
+    by_resource: dict[str, list[dict]] = {}
+    for a in assignments:
+        by_resource.setdefault(a["resource_id"], []).append(a)
+
+    for resource_id, ops in by_resource.items():
+        sorted_ops = sorted(ops, key=lambda x: parse_dt(x["start"]))
+        for i in range(len(sorted_ops) - 1):
+            curr_end = parse_dt(sorted_ops[i]["end"])
+            next_start = parse_dt(sorted_ops[i + 1]["start"])
+            assert curr_end <= next_start, (
+                f"Overlap on {resource_id}: {sorted_ops[i]} overlaps {sorted_ops[i+1]}"
+            )
+
+    # 4. Calendar compliance: Fill-1 has a break 12:00-12:30
+    fill1_ops = by_resource.get("Fill-1", [])
+    break_start = parse_dt("2025-11-03T12:00:00")
+    break_end = parse_dt("2025-11-03T12:30:00")
+    for a in fill1_ops:
+        op_start = parse_dt(a["start"])
+        op_end = parse_dt(a["end"])
+        # Operation must not span the break
+        assert not (op_start < break_end and op_end > break_start), (
+            f"Fill-1 op spans break window: {a}"
+        )
+
+    # 5. KPIs are present and non-negative
+    kpis = body["kpis"]
+    assert kpis["tardiness_minutes"] >= 0
+    assert kpis["changeover_count"] >= 0
+    assert kpis["changeover_minutes"] >= 0
+    assert kpis["makespan_minutes"] > 0
+    for resource_id, pct in kpis["utilization_pct"].items():
+        assert 0 <= pct <= 100, f"utilization out of range for {resource_id}: {pct}"

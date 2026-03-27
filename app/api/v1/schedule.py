@@ -24,7 +24,7 @@ async def schedule(request: ClientARequest):
     result = solve(problem)
 
     if isinstance(result, InfeasibleResult):
-        return result.model_dump()
+        return JSONResponse(status_code=422, content=result.model_dump())
 
     kpis = compute_kpis(problem, result.assignments)
     return {

@@ -209,7 +209,61 @@ def test_multiple_semantic_issues_all_returned() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 4 – valid minimal payload returns real schedule
+# Test 4 – infeasible problem returns 422 with structured error body
+# ---------------------------------------------------------------------------
+
+
+def test_infeasible_problem_returns_422_with_error_body() -> None:
+    """A problem that passes semantic validation but is unsolvable at the solver
+    level must return 422 with the structured {'error': 'infeasible', 'why': [...]}
+    body.
+
+    The trigger: two jobs each requiring 300 minutes of fill, but the only fill
+    resource has a single 400-minute window.  Each operation individually fits
+    (300 < 400) so the validator passes, but combined they need 600 minutes which
+    exceeds the available 400 minutes -- the solver returns infeasible.
+    """
+    payload = {
+        "horizon": {
+            "start": "2025-11-03T08:00:00",
+            "end": "2025-11-03T14:40:00",  # 400-minute horizon
+        },
+        "resources": [
+            {
+                "id": "Fill-1",
+                "capabilities": ["fill"],
+                "calendar": [["2025-11-03T08:00:00", "2025-11-03T14:40:00"]],
+            }
+        ],
+        "changeover_matrix_minutes": {"values": {}},
+        "products": [
+            {
+                "id": "P-A",
+                "family": "standard",
+                "due": "2025-11-03T14:40:00",
+                "route": [{"capability": "fill", "duration_minutes": 300}],
+            },
+            {
+                "id": "P-B",
+                "family": "standard",
+                "due": "2025-11-03T14:40:00",
+                "route": [{"capability": "fill", "duration_minutes": 300}],
+            },
+        ],
+        "settings": {"time_limit_seconds": 5, "objective_mode": "min_tardiness"},
+    }
+
+    response = client.post("/api/v1/schedule", json=payload)
+
+    assert response.status_code == 422
+    body = response.json()
+    assert body.get("error") == "infeasible"
+    assert isinstance(body.get("why"), list)
+    assert len(body["why"]) >= 1
+
+
+# ---------------------------------------------------------------------------
+# Test 5 – valid minimal payload returns real schedule
 # ---------------------------------------------------------------------------
 
 

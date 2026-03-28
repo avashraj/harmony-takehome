@@ -24,6 +24,7 @@ from app.models import (
     TimeWindow,
 )
 from app.scheduler import compute_kpis, solve
+from app.scheduler.solver import _merge_calendar_windows
 
 
 # ---------------------------------------------------------------------------
@@ -538,3 +539,83 @@ def test_different_family_changeover_counted_once() -> None:
     assert kpis.changeover_minutes == 20, (
         f"Expected 20 changeover minutes, got {kpis.changeover_minutes}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Calendar window normalization
+# ---------------------------------------------------------------------------
+
+
+def test_merge_calendar_windows_overlapping() -> None:
+    """Two overlapping windows are merged into a single spanning window."""
+    windows = [_window(0, 120), _window(60, 240)]
+    merged = _merge_calendar_windows(windows)
+    assert len(merged) == 1
+    assert merged[0].start == _dt(0)
+    assert merged[0].end == _dt(240)
+
+
+def test_merge_calendar_windows_fully_contained() -> None:
+    """A window fully inside another is absorbed into the outer window."""
+    windows = [_window(0, 240), _window(60, 120)]
+    merged = _merge_calendar_windows(windows)
+    assert len(merged) == 1
+    assert merged[0].start == _dt(0)
+    assert merged[0].end == _dt(240)
+
+
+def test_merge_calendar_windows_adjacent() -> None:
+    """Adjacent (touching) windows are merged into one contiguous window."""
+    windows = [_window(0, 120), _window(120, 240)]
+    merged = _merge_calendar_windows(windows)
+    assert len(merged) == 1
+    assert merged[0].start == _dt(0)
+    assert merged[0].end == _dt(240)
+
+
+def test_merge_calendar_windows_disjoint_unchanged() -> None:
+    """Non-overlapping, non-adjacent windows are kept as separate intervals."""
+    windows = [_window(0, 120), _window(150, 240)]
+    merged = _merge_calendar_windows(windows)
+    assert len(merged) == 2
+
+
+def test_solver_handles_overlapping_calendar_windows() -> None:
+    """A resource with overlapping calendar windows produces a valid schedule.
+
+    Without normalization the solver would create two presence literals for the
+    overlapping zone and could produce an invalid model; with normalization the
+    windows are merged to [0, 240) and the 90-minute operation fits cleanly.
+    """
+    problem = _problem(
+        jobs=[Job(id="J1", family="std", due=_dt(480), operations=[
+            Operation(capability="fill", duration_minutes=90),
+        ])],
+        resources=[Resource(id="R1", capabilities={"fill"}, calendar=[
+            _window(0, 120),   # 08:00 – 10:00
+            _window(60, 240),  # 09:00 – 12:00  (overlaps above)
+        ])],
+    )
+    result = solve(problem)
+    assert isinstance(result, SchedulerSuccess)
+    a = result.assignments[0]
+    assert a.resource_id == "R1"
+    # Merged window is [0, 240); assignment must lie within it
+    assert a.start >= _dt(0)
+    assert a.end <= _dt(240)
+
+
+def test_solver_handles_fully_contained_calendar_window() -> None:
+    """A window fully inside a larger window is absorbed; the operation still schedules."""
+    problem = _problem(
+        jobs=[Job(id="J1", family="std", due=_dt(480), operations=[
+            Operation(capability="fill", duration_minutes=30),
+        ])],
+        resources=[Resource(id="R1", capabilities={"fill"}, calendar=[
+            _window(0, 240),   # outer window
+            _window(60, 120),  # fully inside the outer window
+        ])],
+    )
+    result = solve(problem)
+    assert isinstance(result, SchedulerSuccess)
+    assert len(result.assignments) == 1

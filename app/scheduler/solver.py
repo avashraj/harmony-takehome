@@ -24,6 +24,7 @@ from app.models import (
     ObjectiveMode,
     SchedulerSuccess,
     SchedulingProblem,
+    TimeWindow,
 )
 
 
@@ -42,6 +43,25 @@ def _to_minutes(dt: datetime, origin: datetime) -> int:
 def _from_minutes(minutes: int, origin: datetime) -> datetime:
     """Convert integer minutes back to a datetime relative to origin."""
     return origin + timedelta(minutes=minutes)
+
+
+def _merge_calendar_windows(windows: list[TimeWindow]) -> list[TimeWindow]:
+    """Merge overlapping or adjacent calendar windows into disjoint intervals.
+
+    Sorts by start time, then sweeps forward extending the current merged window
+    whenever the next window starts at or before the current end.
+    """
+    if not windows:
+        return []
+    sorted_windows = sorted(windows, key=lambda w: w.start)
+    merged: list[TimeWindow] = [sorted_windows[0]]
+    for window in sorted_windows[1:]:
+        if window.start <= merged[-1].end:
+            if window.end > merged[-1].end:
+                merged[-1] = TimeWindow(start=merged[-1].start, end=window.end)
+        else:
+            merged.append(window)
+    return merged
 
 
 # ---------------------------------------------------------------------------
@@ -98,11 +118,13 @@ def _build_variables(problem: SchedulingProblem) -> SolverContext:
     )
 
     # Pre-build resource lookup: capability -> list of (resource, window_index pairs)
+    # Calendar windows are merged first so overlapping inputs don't corrupt the model.
     resource_by_cap: dict[str, list[tuple]] = {}
     for resource in problem.resources:
+        merged_calendar = _merge_calendar_windows(resource.calendar)
         for cap in resource.capabilities:
             resource_by_cap.setdefault(cap, [])
-            for w_idx, window in enumerate(resource.calendar):
+            for w_idx, window in enumerate(merged_calendar):
                 resource_by_cap[cap].append((resource, w_idx, window))
         ctx.intervals.setdefault(resource.id, [])
 

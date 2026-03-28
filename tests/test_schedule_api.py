@@ -374,3 +374,34 @@ def test_full_example_satisfies_hard_constraints() -> None:
     assert kpis["makespan_minutes"] > 0
     for resource_id, pct in kpis["utilization_pct"].items():
         assert 0 <= pct <= 100, f"utilization out of range for {resource_id}: {pct}"
+
+
+# ---------------------------------------------------------------------------
+# Error handling: adapt() ValueError paths
+# ---------------------------------------------------------------------------
+
+
+def test_invalid_objective_mode_returns_422_with_detail() -> None:
+    """An unrecognised objective_mode string raises ValueError inside adapt();
+    the endpoint must catch it and return 422 with a 'detail' key."""
+    payload = _valid_payload()
+    payload["settings"]["objective_mode"] = "invalid_mode"
+
+    response = client.post("/api/v1/schedule", json=payload)
+
+    assert response.status_code == 422
+    body = response.json()
+    assert "detail" in body
+
+
+def test_malformed_changeover_key_returns_422_with_detail() -> None:
+    """A changeover key missing the '->' separator raises ValueError inside adapt();
+    the endpoint must catch it and return 422 with a 'detail' key."""
+    payload = _valid_payload()
+    payload["changeover_matrix_minutes"]["values"] = {"standard_premium": 20}
+
+    response = client.post("/api/v1/schedule", json=payload)
+
+    assert response.status_code == 422
+    body = response.json()
+    assert "detail" in body

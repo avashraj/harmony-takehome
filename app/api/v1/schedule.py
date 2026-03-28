@@ -13,7 +13,11 @@ router = APIRouter()
 
 @router.post("/schedule")
 def schedule(request: ClientARequest):
-    problem = adapt(request)
+    try:
+        problem = adapt(request)
+    except ValueError as exc:
+        return JSONResponse(status_code=422, content={"detail": str(exc)})
+
     validation = validate_problem(problem)
     if not validation.is_valid:
         return JSONResponse(
@@ -21,7 +25,12 @@ def schedule(request: ClientARequest):
             content={"issues": [issue.model_dump() for issue in validation.issues]},
         )
 
-    result = solve(problem)
+    try:
+        result = solve(problem)
+    except RuntimeError as exc:
+        return JSONResponse(status_code=500, content={"detail": f"Solver internal error: {exc}"})
+    except Exception:
+        return JSONResponse(status_code=500, content={"detail": "Unexpected server error."})
 
     if isinstance(result, InfeasibleResult):
         return JSONResponse(status_code=422, content=result.model_dump())

@@ -49,7 +49,7 @@ curl -X POST http://localhost:8000/api/v1/schedule \
 uv run pytest tests/ -v
 ```
 
-All 45 tests should pass. The suite covers canonical models, the Client A adapter,
+All 60 tests should pass. The suite covers canonical models, the Client A adapter,
 the semantic validator, the CP-SAT solver, and the HTTP endpoint end-to-end.
 
 ### Acceptance checks (requires running server)

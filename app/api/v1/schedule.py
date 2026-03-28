@@ -22,7 +22,10 @@ def schedule(request: ClientARequest):
     if not validation.is_valid:
         return JSONResponse(
             status_code=422,
-            content={"issues": [issue.model_dump() for issue in validation.issues]},
+            content={
+                "error": "infeasible",
+                "why": [issue.message for issue in validation.issues],
+            },
         )
 
     try:

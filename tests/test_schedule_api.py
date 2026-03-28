@@ -171,7 +171,7 @@ def test_bad_payload_returns_422() -> None:
 def test_orphan_capability_returns_422_with_issues() -> None:
     """A well-formed request whose operation requires a capability ('weld') that
     no resource provides triggers our semantic validator and returns a 422 with
-    a structured issues list."""
+    the infeasible error body."""
     payload = _valid_payload()
     payload["products"][0]["route"].append(
         {"capability": "weld", "duration_minutes": 10}
@@ -181,9 +181,10 @@ def test_orphan_capability_returns_422_with_issues() -> None:
 
     assert response.status_code == 422
     body = response.json()
-    assert "issues" in body
-    rules = [issue["rule"] for issue in body["issues"]]
-    assert "orphan_capability" in rules
+    assert body.get("error") == "infeasible"
+    why = body.get("why", [])
+    assert isinstance(why, list) and len(why) >= 1
+    assert any("weld" in msg for msg in why)
 
 
 def test_multiple_semantic_issues_all_returned() -> None:
@@ -203,9 +204,12 @@ def test_multiple_semantic_issues_all_returned() -> None:
 
     assert response.status_code == 422
     body = response.json()
-    rules = {issue["rule"] for issue in body["issues"]}
-    assert "resource_no_calendar" in rules
-    assert "orphan_capability" in rules
+    assert body.get("error") == "infeasible"
+    why = body.get("why", [])
+    assert isinstance(why, list) and len(why) >= 2
+    combined = " ".join(why)
+    assert "Pack-1" in combined or "never available" in combined
+    assert "weld" in combined
 
 
 # ---------------------------------------------------------------------------

@@ -119,7 +119,7 @@ ClientARequest          ← Pydantic parsing (FastAPI)
 SchedulingProblem       ← canonical internal model
         │  validate_problem()
         ▼
-ValidationResult ──── invalid ──→ 422 {"issues": [...]}
+ValidationResult ──── invalid ──→ 422 {"error": "infeasible", "why": [...]}
         │ valid
         ▼
 solve(problem)          ← CP-SAT solver

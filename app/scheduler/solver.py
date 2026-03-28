@@ -370,6 +370,8 @@ def solve(problem: SchedulingProblem) -> SchedulerSuccess | InfeasibleResult:
 
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = float(problem.settings.time_limit_seconds)
+    solver.parameters.random_seed = 42
+    solver.parameters.num_search_workers = 1
     status = solver.Solve(ctx.model)
 
     return _extract_solution(ctx, solver, status)

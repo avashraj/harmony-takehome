@@ -220,12 +220,28 @@ def check_invariants(url: str) -> None:
 
 
 def check_kpi_reproducibility(url: str) -> None:
-    """Recompute all 5 KPIs from assignments and diff against reported values."""
-    status, body = post(url, FEASIBLE_PAYLOAD)
-    assert status == 200, f"Expected 200, got {status}: {body}"
+    """Call the API twice with the same payload and verify:
+    1. Both responses are identical (determinism across calls).
+    2. All 5 KPIs in the first response match values recomputed from its assignments.
+    """
+    status1, body1 = post(url, FEASIBLE_PAYLOAD)
+    status2, body2 = post(url, FEASIBLE_PAYLOAD)
+    assert status1 == 200, f"Call 1: expected 200, got {status1}: {body1}"
+    assert status2 == 200, f"Call 2: expected 200, got {status2}: {body2}"
 
-    assignments = body["assignments"]
-    reported = body["kpis"]
+    assert body1["assignments"] == body2["assignments"], (
+        f"Non-deterministic assignments between calls:\n"
+        f"  call 1: {body1['assignments']}\n"
+        f"  call 2: {body2['assignments']}"
+    )
+    assert body1["kpis"] == body2["kpis"], (
+        f"Non-deterministic KPIs between calls:\n"
+        f"  call 1: {body1['kpis']}\n"
+        f"  call 2: {body2['kpis']}"
+    )
+
+    assignments = body1["assignments"]
+    reported = body1["kpis"]
 
     # Build lookup tables from the payload directly (no app/ imports)
     payload = FEASIBLE_PAYLOAD

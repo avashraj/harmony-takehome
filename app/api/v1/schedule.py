@@ -12,7 +12,7 @@ router = APIRouter()
 
 
 @router.post("/schedule")
-async def schedule(request: ClientARequest):
+def schedule(request: ClientARequest):
     problem = adapt(request)
     validation = validate_problem(problem)
     if not validation.is_valid:

@@ -22,6 +22,17 @@ def _check_no_jobs(problem: SchedulingProblem) -> list[ValidationIssue]:
     return []
 
 
+def _check_blank_ids(problem: SchedulingProblem) -> list[ValidationIssue]:
+    issues: list[ValidationIssue] = []
+    for job in problem.jobs:
+        if not job.id.strip():
+            issues.append(_issue("blank_job_id", "A job has a blank or empty id."))
+    for resource in problem.resources:
+        if not resource.id.strip():
+            issues.append(_issue("blank_resource_id", "A resource has a blank or empty id."))
+    return issues
+
+
 def _check_no_resources(problem: SchedulingProblem) -> list[ValidationIssue]:
     if problem.jobs and not problem.resources:
         return [_issue("no_resources", "Problem contains jobs but no resources; nowhere to schedule.")]
@@ -168,6 +179,7 @@ def _check_negative_changeover(problem: SchedulingProblem) -> list[ValidationIss
 
 _RULES = [
     _check_no_jobs,
+    _check_blank_ids,
     _check_no_resources,
     _check_job_no_operations,
     _check_duplicate_job_ids,

@@ -72,7 +72,7 @@ def _parse_changeover_keys(flat: dict[str, int]) -> dict[str, dict[str, int]]:
         if len(parts) != 2:
             raise ValueError(f"invalid changeover key: {key!r}")
 
-        from_family, to_family = parts
+        from_family, to_family = parts[0].strip(), parts[1].strip()
         if not from_family or not to_family:
             raise ValueError(f"invalid changeover key: {key!r}")
 

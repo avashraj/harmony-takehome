@@ -190,3 +190,35 @@ def test_format_assignment_step_index_increments() -> None:
             end=datetime(2025, 11, 3, 9, 15, 0),
         )
         assert format_assignment(assignment)["step_index"] == expected_step
+
+
+# ---------------------------------------------------------------------------
+# Changeover key whitespace handling
+# ---------------------------------------------------------------------------
+
+
+def test_changeover_key_spaces_around_arrow_parsed_correctly() -> None:
+    """Spaces around '->' are stripped so families match correctly."""
+    payload = _sample_payload()
+    payload["changeover_matrix_minutes"]["values"] = {"standard -> premium": 20}
+    request = ClientARequest.model_validate(payload)
+    problem = adapt(request)
+    assert problem.changeover_matrix.get_minutes("standard", "premium") == 20
+
+
+def test_changeover_key_leading_trailing_spaces_parsed_correctly() -> None:
+    """Leading and trailing spaces on each family name are stripped."""
+    payload = _sample_payload()
+    payload["changeover_matrix_minutes"]["values"] = {" standard -> premium ": 15}
+    request = ClientARequest.model_validate(payload)
+    problem = adapt(request)
+    assert problem.changeover_matrix.get_minutes("standard", "premium") == 15
+
+
+def test_changeover_key_empty_after_strip_raises() -> None:
+    """A key whose family name is blank after stripping still raises ValueError."""
+    payload = _sample_payload()
+    payload["changeover_matrix_minutes"]["values"] = {" -> premium": 10}
+    request = ClientARequest.model_validate(payload)
+    with pytest.raises(ValueError, match="invalid changeover key"):
+        adapt(request)

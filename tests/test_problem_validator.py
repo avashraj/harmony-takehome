@@ -231,3 +231,42 @@ def test_multiple_issues_all_returned() -> None:
     assert "orphan_capability" in found_rules
     assert "negative_changeover" in found_rules
     assert len(result.issues) >= 3
+
+
+# ---------------------------------------------------------------------------
+# Tier 1 – Blank IDs
+# ---------------------------------------------------------------------------
+
+
+def test_empty_job_id_flagged() -> None:
+    job = Job(
+        id="",
+        family="standard",
+        due=datetime.fromisoformat("2025-11-03T12:00:00"),
+        operations=[Operation(capability="fill", duration_minutes=30)],
+    )
+    result = validate_problem(_build_problem(jobs=[job]))
+    assert "blank_job_id" in _rules(result)
+
+
+def test_whitespace_only_job_id_flagged() -> None:
+    job = Job(
+        id="   ",
+        family="standard",
+        due=datetime.fromisoformat("2025-11-03T12:00:00"),
+        operations=[Operation(capability="fill", duration_minutes=30)],
+    )
+    result = validate_problem(_build_problem(jobs=[job]))
+    assert "blank_job_id" in _rules(result)
+
+
+def test_empty_resource_id_flagged() -> None:
+    resource = Resource(id="", capabilities={"fill"}, calendar=[_FULL_WINDOW])
+    result = validate_problem(_build_problem(resources=[resource]))
+    assert "blank_resource_id" in _rules(result)
+
+
+def test_valid_ids_not_flagged() -> None:
+    result = validate_problem(_build_problem())
+    assert "blank_job_id" not in _rules(result)
+    assert "blank_resource_id" not in _rules(result)
